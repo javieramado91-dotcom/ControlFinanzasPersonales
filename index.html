@@ -1,0 +1,697 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#1e293b">
+    <title>Mi Billetera</title>
+    
+    <!-- Librerías Externas -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Configuración Tailwind y Estilos App -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#3b82f6',
+                        dark: '#0f172a',
+                        surface: '#ffffff',
+                        background: '#f1f5f9'
+                    },
+                    boxShadow: {
+                        'up': '0 -4px 6px -1px rgba(0, 0, 0, 0.1)',
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Estilos para comportamiento nativo de App */
+        * { -webkit-tap-highlight-color: transparent; }
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            overscroll-behavior-y: none; /* Evita el rebote de scroll en Chrome Android */
+            user-select: none; /* Sensación de App, no de web */
+        }
+        
+        /* Ocultar scrollbar pero permitir scroll */
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Animación del Modal tipo Bottom Sheet */
+        .bottom-sheet {
+            transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            transform: translateY(100%);
+        }
+        .bottom-sheet.active { transform: translateY(0); }
+        
+        /* Animación Toast Notification */
+        @keyframes fadeInOut {
+            0% { opacity: 0; transform: translateY(20px); }
+            10% { opacity: 1; transform: translateY(0); }
+            90% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(-10px); }
+        }
+        .toast { animation: fadeInOut 3s forwards; }
+
+        /* Ajustes para iPhone Notch */
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        .pt-safe { padding-top: env(safe-area-inset-top); }
+    </style>
+</head>
+<body class="bg-background text-slate-800 h-[100dvh] flex flex-col overflow-hidden">
+
+    <!-- 1. ENCABEZADO FIJO -->
+    <header class="bg-dark text-white pt-safe px-6 pb-6 rounded-b-[2rem] shadow-lg z-10 shrink-0 relative">
+        <!-- Fecha Actual (Top Right) -->
+        <div class="absolute top-6 right-6 text-right">
+             <p class="text-xs text-blue-300 font-medium opacity-80 uppercase tracking-wider">Hoy</p>
+             <p class="text-sm font-bold text-white" id="today-display">Cargando...</p>
+        </div>
+
+        <div class="flex justify-between items-center mt-8">
+            <div>
+                <p class="text-blue-200 text-xs font-medium uppercase tracking-wider mb-1">Saldo Global</p>
+                <h1 class="text-4xl font-bold tracking-tight" id="header-balance">$0.00</h1>
+            </div>
+        </div>
+        
+        <!-- Tarjetas Resumen Flotantes (Asociadas al mes seleccionado) -->
+        <div class="flex gap-3 mt-6">
+            <div class="flex-1 bg-white/10 backdrop-blur border border-white/5 p-3 rounded-2xl flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-green-500/20 text-green-400 flex items-center justify-center text-xs">
+                    <i class="fas fa-arrow-down"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] text-blue-200 uppercase" id="label-income">Ingresos Mes</p>
+                    <p class="font-bold text-sm" id="header-income">$0.00</p>
+                </div>
+            </div>
+            <div class="flex-1 bg-white/10 backdrop-blur border border-white/5 p-3 rounded-2xl flex items-center gap-3">
+                <div class="w-8 h-8 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center text-xs">
+                    <i class="fas fa-arrow-up"></i>
+                </div>
+                <div>
+                    <p class="text-[10px] text-blue-200 uppercase" id="label-expense">Gastos Mes</p>
+                    <p class="font-bold text-sm" id="header-expense">$0.00</p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 2. ÁREA DE CONTENIDO SCROLLABLE -->
+    <main class="flex-1 overflow-y-auto hide-scroll p-4 pb-28 relative w-full max-w-md mx-auto" id="main-container">
+        
+        <!-- VISTA: HOME (Movimientos) -->
+        <section id="view-home" class="view-section space-y-4 animate-fade">
+            
+            <!-- Barra de Navegación de Meses -->
+            <div class="bg-white rounded-2xl p-2 shadow-sm flex items-center justify-between">
+                <button onclick="changeMonth(-1)" class="w-10 h-10 rounded-xl hover:bg-slate-50 text-slate-400 flex items-center justify-center active:scale-90 transition">
+                    <i class="fas fa-chevron-left"></i>
+                </button>
+                <div class="text-center">
+                    <p class="text-xs text-slate-400 font-bold uppercase tracking-wider">Visualizando</p>
+                    <h3 class="text-lg font-bold text-slate-800" id="month-navigator-label">Enero 2026</h3>
+                </div>
+                <button onclick="changeMonth(1)" class="w-10 h-10 rounded-xl hover:bg-slate-50 text-slate-400 flex items-center justify-center active:scale-90 transition">
+                    <i class="fas fa-chevron-right"></i>
+                </button>
+            </div>
+
+            <!-- Botones de Acción Principal -->
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="openSheet('ingreso')" class="bg-green-600 active:bg-green-700 text-white p-4 rounded-2xl shadow-sm flex flex-col items-center justify-center gap-1 transition transform active:scale-95">
+                    <i class="fas fa-plus text-xl"></i>
+                    <span class="font-bold text-sm">Ingreso</span>
+                </button>
+                <button onclick="openSheet('gasto')" class="bg-red-600 active:bg-red-700 text-white p-4 rounded-2xl shadow-sm flex flex-col items-center justify-center gap-1 transition transform active:scale-95">
+                    <i class="fas fa-minus text-xl"></i>
+                    <span class="font-bold text-sm">Gasto</span>
+                </button>
+            </div>
+
+            <!-- Lista de Movimientos -->
+            <div id="transactions-list" class="space-y-3 pb-4 pt-2">
+                <!-- Se llena con JS -->
+            </div>
+            
+            <div id="empty-state" class="hidden flex flex-col items-center justify-center py-10 text-slate-400 opacity-60">
+                <i class="fas fa-calendar-times text-4xl mb-2"></i>
+                <p class="text-sm">Sin movimientos este mes</p>
+            </div>
+        </section>
+
+        <!-- VISTA: ESTADÍSTICAS -->
+        <section id="view-stats" class="view-section hidden space-y-6">
+            <h2 class="text-2xl font-bold px-2">Análisis</h2>
+            
+            <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-100 relative">
+                <h3 class="text-sm font-bold text-slate-500 uppercase mb-4 text-center">Gastos por Categoría</h3>
+                <div class="h-64 relative">
+                    <canvas id="chart-expenses"></canvas>
+                    <div id="chart-empty" class="hidden absolute inset-0 flex items-center justify-center text-slate-400 text-xs">
+                        Sin datos para graficar
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-4 bg-blue-50 rounded-2xl border border-blue-100">
+                <p class="text-sm text-blue-800 text-center">
+                    <i class="fas fa-info-circle mr-1"></i>
+                    Las estadísticas muestran los datos del mes seleccionado en la pantalla de inicio.
+                </p>
+            </div>
+        </section>
+
+        <!-- VISTA: AJUSTES (Categorías y Datos) -->
+        <section id="view-settings" class="view-section hidden space-y-6">
+            <h2 class="text-2xl font-bold px-2">Configuración</h2>
+
+            <!-- Sección Categorías -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="p-4 border-b border-slate-50 bg-slate-50 flex justify-between items-center">
+                    <h3 class="font-bold text-slate-700"><i class="fas fa-tags mr-2 text-blue-500"></i>Categorías</h3>
+                </div>
+                
+                <div class="p-4 space-y-4">
+                    <!-- Ingresos -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-bold text-green-600 uppercase">Ingresos</span>
+                            <button onclick="addCategoryPrompt('ingreso')" class="w-6 h-6 rounded bg-green-100 text-green-600 flex items-center justify-center"><i class="fas fa-plus text-xs"></i></button>
+                        </div>
+                        <div id="settings-cat-ingreso" class="flex flex-wrap gap-2"></div>
+                    </div>
+
+                    <!-- Gastos -->
+                    <div>
+                        <div class="flex justify-between items-center mb-2">
+                            <span class="text-xs font-bold text-red-600 uppercase">Gastos</span>
+                            <button onclick="addCategoryPrompt('gasto')" class="w-6 h-6 rounded bg-red-100 text-red-600 flex items-center justify-center"><i class="fas fa-plus text-xs"></i></button>
+                        </div>
+                        <div id="settings-cat-gasto" class="flex flex-wrap gap-2"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sección Datos -->
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="p-4 border-b border-slate-50 bg-slate-50">
+                    <h3 class="font-bold text-slate-700"><i class="fas fa-database mr-2 text-blue-500"></i>Datos</h3>
+                </div>
+                <div class="p-2">
+                    <button onclick="exportData()" class="w-full text-left p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-sm font-medium text-slate-700">
+                        <div class="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center"><i class="fas fa-download"></i></div>
+                        Exportar copia de seguridad
+                    </button>
+                    <div class="relative">
+                        <input type="file" id="import-input" class="absolute inset-0 w-full h-full opacity-0 z-10" onchange="importData(this)" accept=".json">
+                        <button class="w-full text-left p-3 hover:bg-slate-50 rounded-lg flex items-center gap-3 text-sm font-medium text-slate-700">
+                            <div class="w-8 h-8 rounded-full bg-green-100 text-green-600 flex items-center justify-center"><i class="fas fa-upload"></i></div>
+                            Importar copia de seguridad
+                        </button>
+                    </div>
+                    <button onclick="wipeData()" class="w-full text-left p-3 hover:bg-red-50 rounded-lg flex items-center gap-3 text-sm font-medium text-red-600">
+                        <div class="w-8 h-8 rounded-full bg-red-100 text-red-500 flex items-center justify-center"><i class="fas fa-trash"></i></div>
+                        Borrar todo y reiniciar
+                    </button>
+                </div>
+            </div>
+            
+            <p class="text-center text-xs text-slate-300 pt-4 pb-8">Versión Móvil 2.1 - Offline</p>
+        </section>
+
+    </main>
+
+    <!-- 3. BOTTOM SHEET (MODAL DE INGRESO/GASTO) -->
+    <div id="backdrop" onclick="closeSheet()" class="fixed inset-0 bg-black/60 z-40 hidden opacity-0 transition-opacity duration-300 backdrop-blur-sm"></div>
+    
+    <div id="bottom-sheet" class="bottom-sheet fixed bottom-0 left-0 right-0 bg-white z-50 rounded-t-[2rem] p-6 shadow-up max-w-md mx-auto h-[85vh] flex flex-col">
+        <!-- Handle para arrastrar (visual) -->
+        <div class="w-12 h-1.5 bg-slate-200 rounded-full mx-auto mb-6 shrink-0"></div>
+
+        <div class="flex justify-between items-center mb-6 shrink-0">
+            <h2 id="sheet-title" class="text-2xl font-bold text-slate-800">Nuevo Movimiento</h2>
+            <button onclick="closeSheet()" class="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500"><i class="fas fa-times"></i></button>
+        </div>
+
+        <form id="trans-form" onsubmit="submitTransaction(event)" class="flex flex-col flex-1 overflow-y-auto hide-scroll pb-safe">
+            <input type="hidden" id="trans-type">
+            
+            <!-- Input Monto -->
+            <div class="mb-6">
+                <label class="text-xs font-bold text-slate-400 uppercase">Monto</label>
+                <div class="flex items-center mt-2 border-b-2 border-slate-100 focus-within:border-blue-500 transition-colors">
+                    <span class="text-3xl font-bold text-slate-300">$</span>
+                    <input type="number" id="trans-amount" step="0.01" inputmode="decimal" class="w-full text-4xl font-bold text-slate-800 outline-none bg-transparent p-2" placeholder="0" required>
+                </div>
+            </div>
+
+            <!-- Input Categoría -->
+            <div class="mb-6 flex-1">
+                <label class="text-xs font-bold text-slate-400 uppercase mb-3 block">Categoría</label>
+                <div id="category-input-area">
+                    <!-- Aquí se inyecta el Select (Gastos) o el Grid (Ingresos) -->
+                </div>
+            </div>
+
+            <!-- Input Nota -->
+            <div class="mb-6">
+                <label class="text-xs font-bold text-slate-400 uppercase">Nota (Opcional)</label>
+                <div class="mt-2 bg-slate-50 rounded-xl px-4 py-3 flex items-center gap-3">
+                    <i class="fas fa-pen text-slate-400"></i>
+                    <input type="text" id="trans-note" class="bg-transparent outline-none w-full text-slate-700 font-medium" placeholder="Escribe un detalle...">
+                </div>
+            </div>
+
+            <!-- Botón Guardar -->
+            <button type="submit" id="btn-submit" class="w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg mt-auto mb-4 active:scale-[0.98] transition">
+                Guardar
+            </button>
+        </form>
+    </div>
+
+    <!-- 4. MENÚ DE NAVEGACIÓN INFERIOR (Dock) -->
+    <nav class="bg-white border-t border-slate-100 fixed bottom-0 w-full pb-safe z-30">
+        <div class="flex justify-around items-center h-16 max-w-md mx-auto">
+            <button onclick="navTo('home')" id="nav-home" class="flex-1 flex flex-col items-center justify-center text-blue-600 transition-colors">
+                <i class="fas fa-wallet text-xl mb-1"></i>
+                <span class="text-[10px] font-bold">Inicio</span>
+            </button>
+            <button onclick="navTo('stats')" id="nav-stats" class="flex-1 flex flex-col items-center justify-center text-slate-400 transition-colors">
+                <i class="fas fa-chart-pie text-xl mb-1"></i>
+                <span class="text-[10px] font-bold">Stats</span>
+            </button>
+            <button onclick="navTo('settings')" id="nav-settings" class="flex-1 flex flex-col items-center justify-center text-slate-400 transition-colors">
+                <i class="fas fa-sliders-h text-xl mb-1"></i>
+                <span class="text-[10px] font-bold">Ajustes</span>
+            </button>
+        </div>
+    </nav>
+
+    <!-- TOAST NOTIFICATION CONTAINER -->
+    <div id="toast-container" class="fixed bottom-24 left-0 right-0 flex justify-center pointer-events-none z-50"></div>
+
+    <!-- LOGICA JAVASCRIPT -->
+    <script>
+        // --- 1. CONFIGURACIÓN Y ESTADO INICIAL ---
+        const DEFAULT_CATEGORIES = {
+            ingreso: ['Sueldo', 'Estudio Contable', 'Negocios', 'Ventas', 'Otros'],
+            gasto: ['Alimentos', 'Transporte', 'Casa', 'Servicios', 'Salud', 'Ocio', 'Ropa', 'Otros']
+        };
+
+        // Estado Global
+        let transactions = JSON.parse(localStorage.getItem('fin_transactions')) || [];
+        let categories = JSON.parse(localStorage.getItem('fin_categories')) || DEFAULT_CATEGORIES;
+        let chartInstance = null;
+        let selectedCategoryIngreso = ''; 
+        let viewDate = new Date(); // Fecha para navegación (mes visualizado)
+
+        // Inicializar
+        document.addEventListener('DOMContentLoaded', () => {
+            updateDateDisplay();
+            refreshUI();
+            updateSettingsUI();
+        });
+
+        function updateDateDisplay() {
+            // Mostrar fecha actual arriba derecha
+            const now = new Date();
+            const options = { weekday: 'long', day: 'numeric', month: 'long' };
+            const str = now.toLocaleDateString('es-ES', options);
+            // Capitalizar
+            document.getElementById('today-display').textContent = str.charAt(0).toUpperCase() + str.slice(1);
+        }
+
+        // --- 2. NAVEGACIÓN Y FILTROS ---
+        function navTo(screen) {
+            document.querySelectorAll('.view-section').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('nav button').forEach(el => {
+                el.className = "flex-1 flex flex-col items-center justify-center text-slate-400 transition-colors";
+            });
+            
+            document.getElementById(`view-${screen}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`nav-${screen}`);
+            activeBtn.className = "flex-1 flex flex-col items-center justify-center text-blue-600 transition-colors";
+
+            if (screen === 'stats') updateStats();
+            if (screen === 'settings') updateSettingsUI();
+            document.getElementById('main-container').scrollTop = 0;
+        }
+
+        function changeMonth(delta) {
+            viewDate.setMonth(viewDate.getMonth() + delta);
+            refreshUI();
+        }
+
+        // --- 3. GESTIÓN DE MODAL (BOTTOM SHEET) ---
+        function openSheet(type) {
+            const sheet = document.getElementById('bottom-sheet');
+            const backdrop = document.getElementById('backdrop');
+            const title = document.getElementById('sheet-title');
+            const btn = document.getElementById('btn-submit');
+            const inputArea = document.getElementById('category-input-area');
+            const typeInput = document.getElementById('trans-type');
+
+            document.getElementById('trans-form').reset();
+            selectedCategoryIngreso = '';
+            typeInput.value = type;
+
+            backdrop.classList.remove('hidden');
+            setTimeout(() => { 
+                backdrop.classList.remove('opacity-0'); 
+                sheet.classList.add('active'); 
+            }, 10);
+
+            if (type === 'ingreso') {
+                title.innerText = "Nuevo Ingreso";
+                title.className = "text-2xl font-bold text-green-600";
+                btn.className = "w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg mt-auto mb-4 bg-green-600 active:bg-green-700 transition";
+                
+                inputArea.innerHTML = `<div class="grid grid-cols-2 gap-3" id="ingreso-grid"></div>`;
+                const grid = document.getElementById('ingreso-grid');
+                categories.ingreso.forEach(cat => {
+                    const btn = document.createElement('button');
+                    btn.type = 'button';
+                    btn.className = "p-3 rounded-xl border border-slate-200 text-slate-600 font-medium text-sm hover:bg-slate-50 transition";
+                    btn.innerText = cat;
+                    btn.onclick = () => {
+                        grid.querySelectorAll('button').forEach(b => b.className = "p-3 rounded-xl border border-slate-200 text-slate-600 font-medium text-sm transition");
+                        btn.className = "p-3 rounded-xl border-2 border-green-500 bg-green-50 text-green-700 font-bold text-sm transition";
+                        selectedCategoryIngreso = cat;
+                    };
+                    grid.appendChild(btn);
+                });
+
+            } else {
+                title.innerText = "Nuevo Gasto";
+                title.className = "text-2xl font-bold text-red-600";
+                btn.className = "w-full py-4 rounded-xl text-white font-bold text-lg shadow-lg mt-auto mb-4 bg-red-600 active:bg-red-700 transition";
+
+                const selectHTML = `
+                    <div class="relative">
+                        <select id="gasto-select" class="w-full p-4 bg-slate-50 rounded-xl font-medium text-slate-700 outline-none appearance-none border border-transparent focus:border-red-500 transition">
+                            <option value="" disabled selected>Selecciona...</option>
+                            ${categories.gasto.map(c => `<option value="${c}">${c}</option>`).join('')}
+                        </select>
+                        <div class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                            <i class="fas fa-chevron-down"></i>
+                        </div>
+                    </div>
+                `;
+                inputArea.innerHTML = selectHTML;
+            }
+            setTimeout(() => document.getElementById('trans-amount').focus(), 300);
+        }
+
+        function closeSheet() {
+            const sheet = document.getElementById('bottom-sheet');
+            const backdrop = document.getElementById('backdrop');
+            sheet.classList.remove('active');
+            backdrop.classList.add('opacity-0');
+            setTimeout(() => {
+                backdrop.classList.add('hidden');
+                document.getElementById('trans-amount').blur(); 
+            }, 300);
+        }
+
+        // --- 4. LÓGICA DE NEGOCIO ---
+        function submitTransaction(e) {
+            e.preventDefault();
+            const type = document.getElementById('trans-type').value;
+            const amount = parseFloat(document.getElementById('trans-amount').value);
+            const note = document.getElementById('trans-note').value;
+            
+            let cat = '';
+            if (type === 'ingreso') cat = selectedCategoryIngreso;
+            else cat = document.getElementById('gasto-select').value;
+
+            if (!amount || amount <= 0) return showToast("⚠️ Ingresa un monto válido");
+            if (!cat) return showToast("⚠️ Selecciona una categoría");
+
+            // Nota: Se usa la fecha actual real para el registro, no la fecha de visualización
+            const newTrans = {
+                id: Date.now(),
+                date: new Date().toISOString(),
+                type,
+                amount,
+                category: cat,
+                note
+            };
+
+            transactions.unshift(newTrans);
+            saveData();
+            
+            // Si estábamos viendo un mes pasado, volvemos al mes actual para ver el nuevo registro
+            viewDate = new Date(); 
+            
+            refreshUI();
+            closeSheet();
+            showToast("✅ Movimiento guardado");
+        }
+
+        function deleteTransaction(id) {
+            if (confirm("¿Borrar este movimiento?")) {
+                transactions = transactions.filter(t => t.id !== id);
+                saveData();
+                refreshUI();
+                if(!document.getElementById('view-stats').classList.contains('hidden')) updateStats();
+                showToast("🗑️ Eliminado");
+            }
+        }
+
+        function saveData() {
+            localStorage.setItem('fin_transactions', JSON.stringify(transactions));
+            localStorage.setItem('fin_categories', JSON.stringify(categories));
+        }
+
+        // --- 5. UI UPDATES ---
+        function refreshUI() {
+            // 1. Balance Global (Siempre suma todo)
+            const total = transactions.reduce((acc, t) => t.type === 'ingreso' ? acc + t.amount : acc - t.amount, 0);
+            document.getElementById('header-balance').innerText = formatMoney(total);
+
+            // 2. Filtro de Mes Seleccionado (viewDate)
+            const viewMonth = viewDate.getMonth();
+            const viewYear = viewDate.getFullYear();
+            
+            // Actualizar Label del Navegador
+            const monthLabel = viewDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
+            document.getElementById('month-navigator-label').textContent = monthLabel.charAt(0).toUpperCase() + monthLabel.slice(1);
+
+            // Filtrar transacciones para la lista y las tarjetas
+            const monthTrans = transactions.filter(t => {
+                const d = new Date(t.date);
+                return d.getMonth() === viewMonth && d.getFullYear() === viewYear;
+            });
+
+            // 3. Tarjetas Resumen (Del mes seleccionado)
+            const inc = monthTrans.filter(t => t.type === 'ingreso').reduce((a, b) => a + b.amount, 0);
+            const exp = monthTrans.filter(t => t.type === 'gasto').reduce((a, b) => a + b.amount, 0);
+            
+            document.getElementById('header-income').innerText = formatMoney(inc);
+            document.getElementById('header-expense').innerText = formatMoney(exp);
+
+            // 4. Lista de Movimientos
+            const list = document.getElementById('transactions-list');
+            list.innerHTML = '';
+            
+            if (monthTrans.length === 0) {
+                document.getElementById('empty-state').classList.remove('hidden');
+            } else {
+                document.getElementById('empty-state').classList.add('hidden');
+                // Agrupar por fecha
+                const grouped = {};
+                monthTrans.forEach(t => {
+                    const dateKey = new Date(t.date).toLocaleDateString('es-ES', { weekday:'short', day:'numeric', month:'short'});
+                    if(!grouped[dateKey]) grouped[dateKey] = [];
+                    grouped[dateKey].push(t);
+                });
+
+                for (const [date, items] of Object.entries(grouped)) {
+                    const groupDiv = document.createElement('div');
+                    groupDiv.innerHTML = `<h4 class="text-xs font-bold text-slate-400 uppercase ml-2 mb-2 mt-4 sticky top-0 bg-background py-1 z-0">${date}</h4>`;
+                    
+                    items.forEach(t => {
+                        const isInc = t.type === 'ingreso';
+                        const el = document.createElement('div');
+                        el.className = "bg-white p-4 rounded-2xl shadow-sm mb-2 flex justify-between items-center active:bg-slate-50 transition";
+                        
+                        const iconColor = isInc ? 'text-green-500 bg-green-50' : 'text-red-500 bg-red-50';
+                        const sign = isInc ? '+' : '-';
+                        const amountColor = isInc ? 'text-green-600' : 'text-slate-800';
+
+                        el.innerHTML = `
+                            <div class="flex items-center gap-3 overflow-hidden">
+                                <div class="w-10 h-10 rounded-full ${iconColor} flex items-center justify-center font-bold text-lg shrink-0">
+                                    ${t.category.charAt(0)}
+                                </div>
+                                <div class="min-w-0">
+                                    <p class="font-bold text-slate-700 text-sm truncate">${t.category}</p>
+                                    <p class="text-xs text-slate-400 truncate">${t.note || t.type}</p>
+                                </div>
+                            </div>
+                            <div class="text-right shrink-0 flex items-center gap-3">
+                                <span class="font-bold ${amountColor}">${sign}${formatMoney(t.amount)}</span>
+                                <button onclick="deleteTransaction(${t.id})" class="text-slate-200 hover:text-red-400 p-1"><i class="fas fa-trash-alt text-xs"></i></button>
+                            </div>
+                        `;
+                        groupDiv.appendChild(el);
+                    });
+                    list.appendChild(groupDiv);
+                }
+            }
+        }
+
+        // --- 6. ESTADÍSTICAS ---
+        function updateStats() {
+            const ctx = document.getElementById('chart-expenses').getContext('2d');
+            
+            // Usamos viewDate (el mes seleccionado en home) para stats también
+            const viewMonth = viewDate.getMonth();
+            const viewYear = viewDate.getFullYear();
+            
+            const filtered = transactions.filter(t => {
+                const d = new Date(t.date);
+                return d.getMonth() === viewMonth && d.getFullYear() === viewYear && t.type === 'gasto';
+            });
+            
+            const totals = {};
+            filtered.forEach(t => totals[t.category] = (totals[t.category] || 0) + t.amount);
+
+            const labels = Object.keys(totals);
+            const data = Object.values(totals);
+
+            document.getElementById('chart-empty').classList.toggle('hidden', data.length > 0);
+
+            if (chartInstance) chartInstance.destroy();
+
+            if (data.length > 0) {
+                chartInstance = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1'],
+                            borderWidth: 0,
+                            hoverOffset: 10
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'bottom', labels: { usePointStyle: true, boxWidth: 8, padding: 20, font: {size:11} } }
+                        },
+                        cutout: '75%'
+                    }
+                });
+            }
+        }
+
+        // --- 7. AJUSTES (CATEGORÍAS) ---
+        function updateSettingsUI() {
+            const contIng = document.getElementById('settings-cat-ingreso');
+            contIng.innerHTML = '';
+            categories.ingreso.forEach((c, idx) => {
+                contIng.innerHTML += createTagHTML(c, 'ingreso', idx);
+            });
+
+            const contGas = document.getElementById('settings-cat-gasto');
+            contGas.innerHTML = '';
+            categories.gasto.forEach((c, idx) => {
+                contGas.innerHTML += createTagHTML(c, 'gasto', idx);
+            });
+        }
+
+        function createTagHTML(name, type, idx) {
+            const color = type === 'ingreso' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-red-50 text-red-700 border-red-200';
+            return `
+                <div class="flex items-center gap-2 px-3 py-1 rounded-full border ${color} text-sm font-medium">
+                    ${name}
+                    <button onclick="removeCategory('${type}', ${idx})" class="opacity-50 hover:opacity-100 ml-1"><i class="fas fa-times"></i></button>
+                </div>
+            `;
+        }
+
+        function addCategoryPrompt(type) {
+            const name = prompt("Nombre de nueva categoría:");
+            if (name && name.trim()) {
+                categories[type].push(name.trim());
+                saveData();
+                updateSettingsUI();
+                showToast("✅ Categoría agregada");
+            }
+        }
+
+        function removeCategory(type, idx) {
+            if(confirm(`¿Eliminar categoría "${categories[type][idx]}"?`)){
+                categories[type].splice(idx, 1);
+                saveData();
+                updateSettingsUI();
+            }
+        }
+
+        // --- 8. IMPORTAR / EXPORTAR ---
+        function exportData() {
+            const data = { t: transactions, c: categories };
+            const blob = new Blob([JSON.stringify(data)], {type: "application/json"});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `backup_finanzas_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        }
+
+        function importData(input) {
+            const file = input.files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const d = JSON.parse(e.target.result);
+                    if(d.t && d.c) {
+                        if(confirm("Se sobrescribirán los datos actuales. ¿Continuar?")) {
+                            transactions = d.t;
+                            categories = d.c;
+                            saveData();
+                            location.reload();
+                        }
+                    } else alert("Archivo inválido");
+                } catch(e) { alert("Error al leer archivo"); }
+            };
+            reader.readAsText(file);
+        }
+
+        function wipeData() {
+            if(confirm("¡PELIGRO! ¿Borrar TODOS los datos para siempre?")) {
+                localStorage.clear();
+                location.reload();
+            }
+        }
+
+        // --- UTILIDADES ---
+        function formatMoney(amount) {
+            return new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', minimumFractionDigits: 0 }).format(amount);
+        }
+
+        function showToast(msg) {
+            const container = document.getElementById('toast-container');
+            const el = document.createElement('div');
+            el.className = "toast bg-slate-800 text-white px-6 py-3 rounded-full shadow-xl text-sm font-medium mb-3 flex items-center gap-2";
+            el.innerHTML = msg;
+            container.appendChild(el);
+            setTimeout(() => el.remove(), 3500);
+        }
+
+    </script>
+</body>
+</html>
+
+
