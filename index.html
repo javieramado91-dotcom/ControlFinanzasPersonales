@@ -172,13 +172,24 @@
                     <canvas id="chart-history"></canvas>
                 </div>
             </div>
+
+            <!-- GRÁFICO 2: INGRESOS POR CATEGORÍA (NUEVO) -->
+            <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 relative">
+                <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">Distribución de Ingresos (Mes Actual)</h3>
+                <div class="h-56 relative flex justify-center">
+                    <canvas id="chart-income"></canvas>
+                    <div id="chart-income-empty" class="hidden absolute inset-0 flex items-center justify-center text-slate-400 text-xs font-medium bg-white/50 backdrop-blur-sm">
+                        Necesitas registrar ingresos este mes
+                    </div>
+                </div>
+            </div>
             
-            <!-- GRÁFICO 2: GASTOS POR CATEGORÍA -->
+            <!-- GRÁFICO 3: GASTOS POR CATEGORÍA -->
             <div class="bg-white p-5 rounded-3xl shadow-sm border border-slate-100 relative">
                 <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-4 text-center">Distribución de Gastos (Mes Actual)</h3>
                 <div class="h-56 relative flex justify-center">
                     <canvas id="chart-expenses"></canvas>
-                    <div id="chart-empty" class="hidden absolute inset-0 flex items-center justify-center text-slate-400 text-xs font-medium bg-white/50 backdrop-blur-sm">
+                    <div id="chart-expenses-empty" class="hidden absolute inset-0 flex items-center justify-center text-slate-400 text-xs font-medium bg-white/50 backdrop-blur-sm">
                         Necesitas registrar gastos este mes
                     </div>
                 </div>
@@ -308,6 +319,7 @@
         
         // Variables de estado
         let chartExpenses = null;
+        let chartIncome = null; // NUEVA VARIABLE
         let chartHistory = null;
         let selectedCategoryIngreso = ''; 
         let viewDate = new Date(); 
@@ -350,10 +362,13 @@
             // 1. GRAFICO DE BARRAS (Histórico 6 meses)
             renderHistoryChart();
             
-            // 2. GRAFICO DE DONA (Mes actual de visualización)
+            // 2. GRAFICO DE DONA (Ingresos Mes Actual) - NUEVO
+            renderIncomeChart();
+            
+            // 3. GRAFICO DE DONA (Gastos Mes Actual)
             renderExpenseChart();
 
-            // 3. GENERADOR DE CONSEJOS AI
+            // 4. GENERADOR DE CONSEJOS AI
             const insights = generateInsights();
             const container = document.getElementById('ai-insights-container');
             
@@ -467,6 +482,46 @@
             });
         }
 
+        // NUEVA FUNCIÓN: Gráfico de Ingresos
+        function renderIncomeChart() {
+            const ctx = document.getElementById('chart-income').getContext('2d');
+            const viewMonth = viewDate.getMonth();
+            const viewYear = viewDate.getFullYear();
+            
+            const filtered = transactions.filter(t => {
+                const d = new Date(t.date);
+                return d.getMonth() === viewMonth && d.getFullYear() === viewYear && t.type === 'ingreso';
+            });
+
+            const totals = {};
+            filtered.forEach(t => totals[t.category] = (totals[t.category] || 0) + t.amount);
+            const data = Object.values(totals);
+            
+            document.getElementById('chart-income-empty').classList.toggle('hidden', data.length > 0);
+
+            if (chartIncome) chartIncome.destroy();
+
+            if (data.length > 0) {
+                chartIncome = new Chart(ctx, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(totals),
+                        datasets: [{
+                            data: data,
+                            backgroundColor: ['#10b981', '#3b82f6', '#f59e0b', '#8b5cf6', '#ec4899', '#6366f1', '#ef4444'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        cutout: '70%'
+                    }
+                });
+            }
+        }
+
         function renderExpenseChart() {
             const ctx = document.getElementById('chart-expenses').getContext('2d');
             const viewMonth = viewDate.getMonth();
@@ -481,7 +536,7 @@
             filtered.forEach(t => totals[t.category] = (totals[t.category] || 0) + t.amount);
             const data = Object.values(totals);
             
-            document.getElementById('chart-empty').classList.toggle('hidden', data.length > 0);
+            document.getElementById('chart-expenses-empty').classList.toggle('hidden', data.length > 0);
 
             if (chartExpenses) chartExpenses.destroy();
 
